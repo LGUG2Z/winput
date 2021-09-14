@@ -414,17 +414,12 @@ pub fn start() -> Result<EventReceiver, MessageLoopError> {
             }
 
             // Tell the system we want to receive inputs.
-            let mut rid: [winuser::RAWINPUTDEVICE; 2] = mem::zeroed();
-            // Keyboard
+            let mut rid: [winuser::RAWINPUTDEVICE; 1] = mem::zeroed();
+            // Mouse
             rid[0].dwFlags = winuser::RIDEV_NOLEGACY | winuser::RIDEV_INPUTSINK;
             rid[0].usUsagePage = hidusage::HID_USAGE_PAGE_GENERIC;
-            rid[0].usUsage = hidusage::HID_USAGE_GENERIC_KEYBOARD;
+            rid[0].usUsage = hidusage::HID_USAGE_GENERIC_MOUSE;
             rid[0].hwndTarget = h_wnd;
-            // Mouse
-            rid[1].dwFlags = winuser::RIDEV_NOLEGACY | winuser::RIDEV_INPUTSINK;
-            rid[1].usUsagePage = hidusage::HID_USAGE_PAGE_GENERIC;
-            rid[1].usUsage = hidusage::HID_USAGE_GENERIC_MOUSE;
-            rid[1].hwndTarget = h_wnd;
 
             let result = winuser::RegisterRawInputDevices(
                 rid.as_ptr(),
@@ -539,6 +534,7 @@ pub enum Event {
 /// The message loop is automatically stopped when this structure is dropped.
 ///
 /// [`start`]: fn.start.html
+#[derive(Debug)]
 pub struct EventReceiver {
     receiver: mpsc::Receiver<Event>,
 }
@@ -615,5 +611,19 @@ pub fn stop() {
     // We just have to wait until it finishes.
     while STATE.load(Ordering::Acquire) != 0 {
         std::hint::spin_loop();
+    }
+
+    // Unregister the Window class so that the message loop can be started again
+    let h_instance = unsafe { libloaderapi::GetModuleHandleW(ptr::null()) };
+
+    let class_name = OsStr::new("winput_message_loop")
+        .encode_wide()
+        .chain(iter::once(0))
+        .collect::<Vec<_>>();
+
+    let class = unsafe { winuser::UnregisterClassW(class_name.as_ptr(), h_instance) };
+
+    if class == 0 {
+        dbg!(WindowsError::from_last_error());
     }
 }
